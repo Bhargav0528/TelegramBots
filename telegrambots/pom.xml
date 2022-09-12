@@ -171,6 +171,11 @@
             <artifactId>commons-io</artifactId>
             <version>${commonio.version}</version>
         </dependency>
+        <dependency>
+            <groupId>com.squareup.okhttp3</groupId>
+            <artifactId>okhttp</artifactId>
+            <version>4.10.0</version>
+        </dependency>
 
         <dependency>
             <groupId>org.glassfish.jersey.test-framework</groupId>

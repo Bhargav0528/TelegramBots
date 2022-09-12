@@ -1,13 +1,17 @@
 package org.telegram.telegrambots.updatesreceivers;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+
+import okhttp3.MediaType;
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.RequestBody;
+import okhttp3.Response;
+
 import org.apache.http.client.config.RequestConfig;
-import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
-import org.apache.http.impl.client.CloseableHttpClient;
-import org.apache.http.util.EntityUtils;
 import org.json.JSONException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -137,7 +141,7 @@ public class DefaultBotSession implements BotSession {
 
         private final UpdatesSupplier updatesSupplier;
         private final Object lock;
-        private CloseableHttpClient httpclient;
+        private OkHttpClient okHttpClient;
         private BackOff backOff;
         private RequestConfig requestConfig;
 
@@ -148,7 +152,7 @@ public class DefaultBotSession implements BotSession {
 
         @Override
         public synchronized void start() {
-            httpclient = TelegramHttpClientBuilder.build(options);
+            okHttpClient = TelegramHttpClientBuilder.buildAlt();
             requestConfig = options.getRequestConfig();
             backOff = options.getBackOff();
 
@@ -169,13 +173,6 @@ public class DefaultBotSession implements BotSession {
 
         @Override
         public void interrupt() {
-            if (httpclient != null) {
-                try {
-                    httpclient.close();
-                } catch (IOException e) {
-                    log.warn(e.getLocalizedMessage(), e);
-                }
-            }
             super.interrupt();
         }
 
@@ -241,16 +238,18 @@ public class DefaultBotSession implements BotSession {
             }
 
             String url = options.getBaseUrl() + token + "/" + GetUpdates.PATH;
-            //http client
-            HttpPost httpPost = new HttpPost(url);
-            httpPost.addHeader("charset", StandardCharsets.UTF_8.name());
-            httpPost.setConfig(requestConfig);
-            httpPost.setEntity(new StringEntity(objectMapper.writeValueAsString(request), ContentType.APPLICATION_JSON));
+            
+            //OkhttpClient
+            RequestBody body = RequestBody.create(objectMapper.writeValueAsString(request), MediaType.get("application/json; charset=utf-8"));
+            Request okhttpRequest = new Request.Builder()
+                .url(url)
+                .post(body)
+                .build();
 
-            try (CloseableHttpResponse response = httpclient.execute(httpPost, options.getHttpContext())) {
-                String responseContent = EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
+            try (Response response = okHttpClient.newCall(okhttpRequest).execute()) {
+                String responseContent = response.body().string();
 
-                if (response.getStatusLine().getStatusCode() >= 500) {
+                if (response.code() >= 500) {
                     log.warn(responseContent);
                     synchronized (lock) {
                         lock.wait(500);

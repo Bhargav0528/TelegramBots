@@ -13,6 +13,9 @@ import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.facilities.proxysocketfactorys.HttpConnectionSocketFactory;
 import org.telegram.telegrambots.facilities.proxysocketfactorys.HttpSSLConnectionSocketFactory;
 import org.telegram.telegrambots.facilities.proxysocketfactorys.SocksSSLConnectionSocketFactory;
+
+import okhttp3.OkHttpClient;
+
 import org.telegram.telegrambots.facilities.proxysocketfactorys.SocksConnectionSocketFactory;
 
 import java.util.concurrent.TimeUnit;
@@ -29,6 +32,14 @@ public class TelegramHttpClientBuilder {
                 .setConnectionTimeToLive(70, TimeUnit.SECONDS)
                 .setMaxConnTotal(100);
         return httpClientBuilder.build();
+    }
+
+    public static OkHttpClient buildAlt() {
+        return new OkHttpClient.Builder()
+        .connectTimeout(70, TimeUnit.SECONDS)
+        .writeTimeout(70, TimeUnit.SECONDS)
+        .readTimeout(70, TimeUnit.SECONDS)
+        .build();
     }
 
     private static HttpClientConnectionManager createConnectionManager(DefaultBotOptions options) {
