@@ -4,19 +4,26 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import okhttp3.MediaType;
+import okhttp3.MultipartBody;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.RequestBody;
 import okhttp3.Response;
 
 import org.apache.http.HttpEntity;
+import org.apache.http.HttpHost;
+import org.apache.http.HttpRequest;
+import org.apache.http.client.ClientProtocolException;
 import org.apache.http.client.config.RequestConfig;
 import org.apache.http.client.methods.CloseableHttpResponse;
 import org.apache.http.client.methods.HttpPost;
+import org.apache.http.conn.ClientConnectionManager;
 import org.apache.http.entity.ContentType;
 import org.apache.http.entity.StringEntity;
 import org.apache.http.entity.mime.MultipartEntityBuilder;
 import org.apache.http.impl.client.CloseableHttpClient;
+import org.apache.http.params.HttpParams;
+import org.apache.http.protocol.HttpContext;
 import org.apache.http.util.EntityUtils;
 import org.telegram.telegrambots.facilities.TelegramHttpClientBuilder;
 import org.telegram.telegrambots.facilities.filedownloader.TelegramFileDownloader;
@@ -76,8 +83,8 @@ public abstract class DefaultAbsSender extends AbsSender {
     protected final ExecutorService exe;
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final DefaultBotOptions options;
-    private final CloseableHttpClient httpClient;
-    private final OkHttpClient okHttpClient;
+    private OkHttpClient httpClient;
+    private CloseableHttpClient closeableHttpClient;
     private final RequestConfig requestConfig;
     private final TelegramFileDownloader telegramFileDownloader;
 
@@ -87,10 +94,7 @@ public abstract class DefaultAbsSender extends AbsSender {
         this.exe = Executors.newFixedThreadPool(options.getMaxThreads());
         this.options = options;
 
-        // httpClient = TelegramHttpClientBuilder.build(options);
-        httpClient = null;
-        okHttpClient = TelegramHttpClientBuilder.buildAlt();
-
+        httpClient = TelegramHttpClientBuilder.buildAlt();
         this.telegramFileDownloader = new TelegramFileDownloader(httpClient, this::getBotToken);
         configureHttpContext();
 
@@ -162,53 +166,71 @@ public abstract class DefaultAbsSender extends AbsSender {
         sendDocument.validate();
         try {
             String url = getBaseUrl() + SendDocument.PATH;
-            HttpPost httppost = configuredHttpPost(url);
+            // HttpPost httppost = configuredHttpPost(url);
 
-            MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-            builder.setLaxMode();
-            builder.setCharset(StandardCharsets.UTF_8);
-            builder.addTextBody(SendDocument.CHATID_FIELD, sendDocument.getChatId(), TEXT_PLAIN_CONTENT_TYPE);
+            MultipartBody.Builder multipartBodyBuilder = new MultipartBody.Builder()
+            .setType(MultipartBody.FORM);
 
-            addInputFile(builder, sendDocument.getDocument(), SendDocument.DOCUMENT_FIELD, true);
+            // MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+            // builder.setLaxMode();
+            // builder.setCharset(StandardCharsets.UTF_8);
+            // builder.addTextBody(SendDocument.CHATID_FIELD, sendDocument.getChatId(), TEXT_PLAIN_CONTENT_TYPE);
+            multipartBodyBuilder.addFormDataPart(SendDocument.CHATID_FIELD, sendDocument.getChatId());
+
+            addInputFile(multipartBodyBuilder, sendDocument.getDocument(), SendDocument.DOCUMENT_FIELD, true);
 
             if (sendDocument.getReplyMarkup() != null) {
-                builder.addTextBody(SendDocument.REPLYMARKUP_FIELD, objectMapper.writeValueAsString(sendDocument.getReplyMarkup()), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendDocument.REPLYMARKUP_FIELD, objectMapper.writeValueAsString(sendDocument.getReplyMarkup()), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.REPLYMARKUP_FIELD, objectMapper.writeValueAsString(sendDocument.getReplyMarkup()));
             }
             if (sendDocument.getReplyToMessageId() != null) {
-                builder.addTextBody(SendDocument.REPLYTOMESSAGEID_FIELD, sendDocument.getReplyToMessageId().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendDocument.REPLYTOMESSAGEID_FIELD, sendDocument.getReplyToMessageId().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.REPLYTOMESSAGEID_FIELD, sendDocument.getReplyToMessageId().toString());
             }
             if (sendDocument.getCaption() != null) {
-                builder.addTextBody(SendDocument.CAPTION_FIELD, sendDocument.getCaption(), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendDocument.CAPTION_FIELD, sendDocument.getCaption(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.CAPTION_FIELD, sendDocument.getCaption());
                 if (sendDocument.getParseMode() != null) {
-                    builder.addTextBody(SendDocument.PARSEMODE_FIELD, sendDocument.getParseMode(), TEXT_PLAIN_CONTENT_TYPE);
+                    // builder.addTextBody(SendDocument.PARSEMODE_FIELD, sendDocument.getParseMode(), TEXT_PLAIN_CONTENT_TYPE);
+                    multipartBodyBuilder.addFormDataPart(SendDocument.PARSEMODE_FIELD, sendDocument.getParseMode());
                 }
             }
             if (sendDocument.getDisableNotification() != null) {
-                builder.addTextBody(SendDocument.DISABLENOTIFICATION_FIELD, sendDocument.getDisableNotification().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendDocument.DISABLENOTIFICATION_FIELD, sendDocument.getDisableNotification().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.DISABLENOTIFICATION_FIELD, sendDocument.getDisableNotification().toString());
             }
             if (sendDocument.getProtectContent() != null) {
-                builder.addTextBody(SendDocument.PROTECTCONTENT_FIELD, sendDocument.getProtectContent().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendDocument.PROTECTCONTENT_FIELD, sendDocument.getProtectContent().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.PROTECTCONTENT_FIELD, sendDocument.getProtectContent().toString());
             }
 
             if (sendDocument.getAllowSendingWithoutReply() != null) {
-                builder.addTextBody(SendDocument.ALLOWSENDINGWITHOUTREPLY_FIELD, sendDocument.getAllowSendingWithoutReply().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendDocument.ALLOWSENDINGWITHOUTREPLY_FIELD, sendDocument.getAllowSendingWithoutReply().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.ALLOWSENDINGWITHOUTREPLY_FIELD, sendDocument.getAllowSendingWithoutReply().toString());
             }
             if (sendDocument.getDisableContentTypeDetection() != null) {
-                builder.addTextBody(SendDocument.DISABLECONTENTTYPEDETECTION_FIELD, sendDocument.getDisableContentTypeDetection().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendDocument.DISABLECONTENTTYPEDETECTION_FIELD, sendDocument.getDisableContentTypeDetection().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.DISABLECONTENTTYPEDETECTION_FIELD, sendDocument.getDisableContentTypeDetection().toString());
             }
             if (sendDocument.getCaptionEntities() != null) {
-                builder.addTextBody(SendDocument.CAPTION_ENTITIES_FIELD, objectMapper.writeValueAsString(sendDocument.getCaptionEntities()), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendDocument.CAPTION_ENTITIES_FIELD, objectMapper.writeValueAsString(sendDocument.getCaptionEntities()), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.CAPTION_ENTITIES_FIELD, objectMapper.writeValueAsString(sendDocument.getCaptionEntities()));
             }
 
             if (sendDocument.getThumb() != null) {
-                addInputFile(builder, sendDocument.getThumb(), SendDocument.THUMB_FIELD, false);
-                builder.addTextBody(SendDocument.THUMB_FIELD, sendDocument.getThumb().getAttachName(), TEXT_PLAIN_CONTENT_TYPE);
+                addInputFile(multipartBodyBuilder, sendDocument.getThumb(), SendDocument.THUMB_FIELD, false);
+                // builder.addTextBody(SendDocument.THUMB_FIELD, sendDocument.getThumb().getAttachName(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendDocument.THUMB_FIELD, sendDocument.getThumb().getAttachName());
             }
 
-            HttpEntity multipart = builder.build();
-            httppost.setEntity(multipart);
+            // HttpEntity multipart = builder.build();
+            // httppost.setEntity(multipart);
+            Request request = new Request.Builder()
+            .url(url)  // pass the url endpoint of api
+            .post(multipartBodyBuilder.build()) // pass the mulipart object we just created having data
+            .build();
 
-            return sendDocument.deserializeResponse(sendHttpPostRequest(httppost));
+            return sendDocument.deserializeResponse(sendHttpPostRequest(request));
         } catch (IOException e) {
             throw new TelegramApiException("Unable to send document", e);
         }
@@ -221,22 +243,30 @@ public abstract class DefaultAbsSender extends AbsSender {
         sendPhoto.validate();
         try {
             String url = getBaseUrl() + SendPhoto.PATH;
-            HttpPost httppost = configuredHttpPost(url);
+            // HttpPost httppost = configuredHttpPost(url);
 
-            MultipartEntityBuilder builder = MultipartEntityBuilder.create();
-            builder.setLaxMode();
-            builder.setCharset(StandardCharsets.UTF_8);
-            builder.addTextBody(SendPhoto.CHATID_FIELD, sendPhoto.getChatId(), TEXT_PLAIN_CONTENT_TYPE);
-            addInputFile(builder, sendPhoto.getPhoto(), SendPhoto.PHOTO_FIELD, true);
+            // MultipartEntityBuilder builder = MultipartEntityBuilder.create();
+            // builder.setLaxMode();
+            // builder.setCharset(StandardCharsets.UTF_8);
+            // builder.addTextBody(SendPhoto.CHATID_FIELD, sendPhoto.getChatId(), TEXT_PLAIN_CONTENT_TYPE);
+
+            MultipartBody.Builder multipartBodyBuilder = new MultipartBody.Builder()
+            .setType(MultipartBody.FORM);
+
+            multipartBodyBuilder.addFormDataPart(SendPhoto.CHATID_FIELD, sendPhoto.getChatId());
+            addInputFile(multipartBodyBuilder, sendPhoto.getPhoto(), SendPhoto.PHOTO_FIELD, true);
 
             if (sendPhoto.getReplyMarkup() != null) {
-                builder.addTextBody(SendPhoto.REPLYMARKUP_FIELD, objectMapper.writeValueAsString(sendPhoto.getReplyMarkup()), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendPhoto.REPLYMARKUP_FIELD, objectMapper.writeValueAsString(sendPhoto.getReplyMarkup()), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendPhoto.REPLYMARKUP_FIELD, objectMapper.writeValueAsString(sendPhoto.getReplyMarkup()));
             }
             if (sendPhoto.getReplyToMessageId() != null) {
-                builder.addTextBody(SendPhoto.REPLYTOMESSAGEID_FIELD, sendPhoto.getReplyToMessageId().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendPhoto.REPLYTOMESSAGEID_FIELD, sendPhoto.getReplyToMessageId().toString(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendPhoto.REPLYTOMESSAGEID_FIELD, sendPhoto.getReplyToMessageId().toString());
             }
             if (sendPhoto.getCaption() != null) {
-                builder.addTextBody(SendPhoto.CAPTION_FIELD, sendPhoto.getCaption(), TEXT_PLAIN_CONTENT_TYPE);
+                // builder.addTextBody(SendPhoto.CAPTION_FIELD, sendPhoto.getCaption(), TEXT_PLAIN_CONTENT_TYPE);
+                multipartBodyBuilder.addFormDataPart(SendPhoto.CAPTION_FIELD, sendPhoto.getCaption());
                 if (sendPhoto.getParseMode() != null) {
                     builder.addTextBody(SendPhoto.PARSEMODE_FIELD, sendPhoto.getParseMode(), TEXT_PLAIN_CONTENT_TYPE);
                 }
@@ -1079,27 +1109,15 @@ public abstract class DefaultAbsSender extends AbsSender {
     private <T extends Serializable, Method extends BotApiMethod<T>> String sendMethodRequest(Method method) throws TelegramApiValidationException, IOException {
         method.validate();
         String url = getBaseUrl() + method.getMethod();
-        // HttpPost httppost = configuredHttpPost(url);
-        // httppost.addHeader("charset", StandardCharsets.UTF_8.name());
-        // httppost.setEntity(new StringEntity(objectMapper.writeValueAsString(method), ContentType.APPLICATION_JSON));
-        // return sendHttpPostRequest(httppost);
-        RequestBody body = RequestBody.create(objectMapper.writeValueAsString(method), MediaType.get("application/json; charset=utf-8"));
-        Request request = new Request.Builder()
-            .url(url)
-            .post(body)
-            .build();
-        return sendHttpPostRequest(request);
+        HttpPost httppost = configuredHttpPost(url);
+        httppost.addHeader("charset", StandardCharsets.UTF_8.name());
+        httppost.setEntity(new StringEntity(objectMapper.writeValueAsString(method), ContentType.APPLICATION_JSON));
+        return sendHttpPostRequest(httppost);
     }
 
     private String sendHttpPostRequest(Request httppost) throws IOException {
-        try (Response response = okHttpClient.newCall(httppost).execute()) {
+        try (Response response = httpClient.newCall(httppost).execute()) {
             return response.body().string();
-        }
-    }
-
-    private String sendHttpPostRequest(HttpPost httppost) throws IOException {
-        try (CloseableHttpResponse response = httpClient.execute(httppost, options.getHttpContext())) {
-            return EntityUtils.toString(response.getEntity(), StandardCharsets.UTF_8);
         }
     }
 
@@ -1153,17 +1171,22 @@ public abstract class DefaultAbsSender extends AbsSender {
         builder.addTextBody(mediaField, objectMapper.writeValueAsString(media), TEXT_PLAIN_CONTENT_TYPE);
     }
 
-    private void addInputFile(MultipartEntityBuilder builder, InputFile file, String fileField, boolean addField) {
+    private void addInputFile(MultipartBody.Builder builder, InputFile file, String fileField, boolean addField) {
         if (file.isNew()) {
             if (file.getNewMediaFile() != null) {
-                builder.addBinaryBody(file.getMediaName(), file.getNewMediaFile(), ContentType.APPLICATION_OCTET_STREAM, file.getMediaName());
+                RequestBody fileBody = RequestBody.create(file.getNewMediaFile(), MediaType.get("application/octet-stream"));
+                // builder.addBinaryBody(file.getMediaName(), file.getNewMediaFile(), ContentType.APPLICATION_OCTET_STREAM, file.getMediaName());
+                builder.addFormDataPart(file.getMediaName(), file.getMediaName(), fileBody);
             } else if (file.getNewMediaStream() != null) {
-                builder.addBinaryBody(file.getMediaName(), file.getNewMediaStream(), ContentType.APPLICATION_OCTET_STREAM, file.getMediaName());
+                // builder.addBinaryBody(file.getMediaName(), file.getNewMediaStream(), ContentType.APPLICATION_OCTET_STREAM, file.getMediaName());
+                RequestBody fileBody = RequestBody.create(file.getNewMediaFile(), MediaType.get("application/octet-stream"));
+                builder.addFormDataPart(file.getMediaName(), file.getMediaName(), fileBody);
             }
         }
 
         if (addField) {
-            builder.addTextBody(fileField, file.getAttachName(), TEXT_PLAIN_CONTENT_TYPE);
+            // builder.addTextBody(fileField, file.getAttachName(), TEXT_PLAIN_CONTENT_TYPE);
+            builder.addFormDataPart(fileField, file.getAttachName());
         }
     }
 

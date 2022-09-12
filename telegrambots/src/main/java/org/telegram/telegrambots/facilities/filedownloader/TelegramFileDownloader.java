@@ -8,6 +8,10 @@ import org.telegram.telegrambots.meta.api.objects.File;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import org.telegram.telegrambots.meta.updateshandlers.DownloadFileCallback;
 
+import okhttp3.OkHttpClient;
+import okhttp3.Request;
+import okhttp3.Response;
+
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.concurrent.CompletableFuture;
@@ -24,17 +28,27 @@ import static org.apache.http.HttpStatus.SC_OK;
  * @version 1.0
  */
 public class TelegramFileDownloader {
+    private final OkHttpClient okHttpClient;
     private final HttpClient httpClient;
     private final Supplier<String> botTokenSupplier;
 
     public TelegramFileDownloader(final Supplier<String> botTokenSupplier) {
         this.botTokenSupplier = botTokenSupplier;
-        httpClient = HttpClients.createDefault();
+        okHttpClient = new OkHttpClient();
+        httpClient = null; 
     }
 
     public TelegramFileDownloader(final HttpClient httpClient, final Supplier<String> botTokenSupplier) {
-        this.httpClient = httpClient;
+        this.okHttpClient = new OkHttpClient();
         this.botTokenSupplier = botTokenSupplier;
+        this.httpClient = null; 
+    }
+
+
+    public TelegramFileDownloader(final OkHttpClient httpClient, final Supplier<String> botTokenSupplier) {
+        this.okHttpClient = httpClient;
+        this.botTokenSupplier = botTokenSupplier;
+        this.httpClient = null; 
     }
 
     public final java.io.File downloadFile(String filePath) throws TelegramApiException {
@@ -156,10 +170,14 @@ public class TelegramFileDownloader {
     private CompletableFuture<InputStream> getFileDownloadStreamFuture(final String url) {
         return CompletableFuture.supplyAsync(() -> {
             try {
-                HttpResponse response = httpClient.execute(new HttpGet(url));
-                final int statusCode = response.getStatusLine().getStatusCode();
+                Request request = new Request.Builder()
+                    .url(url)
+                    .build();
+
+                Response response = okHttpClient.newCall(request).execute();
+                final int statusCode = response.code();
                 if (statusCode == SC_OK) {
-                    return response.getEntity().getContent();
+                    return response.body().byteStream();
                 } else {
                     throw new TelegramApiException("Unexpected Status code while downloading file. Expected 200 got " + statusCode);
                 }
